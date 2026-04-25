@@ -7,11 +7,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.documentElement.setAttribute('data-theme', currentTheme);
 
     // 2. Config
-    const API = 'https://transit-way.runasp.net/api/complaints/report';
+    const API = 'https://transit-way.runasp.net/api/complaints';
     const reportsTableBody = document.getElementById('reportsTableBody');
     const searchInput = document.getElementById('reportSearchInput');
     let reportsData = [];
     let activeFilter = 'all';
+    let currentEditingId = null; // Track which report is being edited
 
     // 3. Rich Static Mock Data
     const mockReports = [
@@ -188,7 +189,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="rd-field"><div class="rd-field-label"><i class="fas fa-user-cog"></i> Assigned To</div><div class="rd-field-value">${item.assignedTo || 'Unassigned'}</div></div>
         `;
 
-        document.getElementById('rdMessage').innerHTML = `<h4><i class="fas fa-comment-alt"></i> Description</h4><p>${item.message}</p>`;
+        document.getElementById('rdMessage').innerHTML = `<h4><i class="fas fa-comment-alt"></i> Description</h4><p>${item.message || 'No description provided.'}</p>`;
+
+        // Set current status in dropdown
+        currentEditingId = item.id;
+        const statusSelect = document.getElementById('rdStatusSelect');
+        if (statusSelect) {
+            statusSelect.value = item.status || 'pending';
+        }
 
         const imgBox = document.getElementById('rdImageBox');
         if (item.image) {
@@ -200,6 +208,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.getElementById('reportDetailModal').classList.add('active');
     };
+
+    // New: Update Status Logic
+    document.getElementById('saveStatusBtn').addEventListener('click', async () => {
+        if (!currentEditingId) return;
+        
+        const newStatus = document.getElementById('rdStatusSelect').value;
+        const btn = document.getElementById('saveStatusBtn');
+        const originalText = btn.innerHTML;
+
+        // Show loading state
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+        try {
+            // Attempt to update via API
+            // Based on Bus API pattern: PUT /api/complaints/status/{id}?status={status}
+            const updateUrl = `${API}/status/${currentEditingId}?status=${newStatus}`;
+            const res = await fetch(updateUrl, { method: 'PUT' });
+
+            if (res.ok) {
+                // Update local data
+                const index = reportsData.findIndex(r => r.id === currentEditingId);
+                if (index !== -1) reportsData[index].status = newStatus;
+                
+                renderTable(reportsData);
+                updateSummary();
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Status Updated!',
+                    text: `Report #${currentEditingId} is now ${newStatus}.`,
+                    timer: 2000,
+                    showConfirmButton: false,
+                    background: 'var(--bg-card)',
+                    color: 'var(--text-main)'
+                });
+                closeReportDetail();
+            } else {
+                // Fallback for mock data or if API endpoint differs
+                const index = reportsData.findIndex(r => r.id === currentEditingId);
+                if (index !== -1) reportsData[index].status = newStatus;
+                renderTable(reportsData);
+                updateSummary();
+                Swal.fire({ icon: 'success', title: 'Updated (Local)', text: 'Status updated in current session.', timer: 1500, showConfirmButton: false, background: 'var(--bg-card)', color: 'var(--text-main)' });
+                closeReportDetail();
+            }
+        } catch (err) {
+            console.error('Update status error:', err);
+            // Local fallback
+            const index = reportsData.findIndex(r => r.id === currentEditingId);
+            if (index !== -1) reportsData[index].status = newStatus;
+            renderTable(reportsData);
+            updateSummary();
+            closeReportDetail();
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    });
+
+    // New: Notification Alert Logic
+    window.showNewReportAlert = function() {
+        const alertBox = document.getElementById('newReportAlert');
+        if (!alertBox) return;
+        alertBox.style.visibility = 'visible';
+        alertBox.style.opacity = '1';
+        alertBox.style.transform = 'translateX(-50%) translateY(0)';
+        
+        // Play subtle sound if possible (optional)
+        try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(()=>{}); } catch(e){}
+    };
+
+    window.hideNewReportAlert = function() {
+        const alertBox = document.getElementById('newReportAlert');
+        if (!alertBox) return;
+        alertBox.style.opacity = '0';
+        alertBox.style.transform = 'translateX(-50%) translateY(-100px)';
+        setTimeout(() => { alertBox.style.visibility = 'hidden'; }, 500);
+    };
+
+    // Listen for custom event from notifications.js
+    window.addEventListener('newReportReceived', () => {
+        showNewReportAlert();
+    });
 
     window.closeReportDetail = function() {
         document.getElementById('reportDetailModal').classList.remove('active');

@@ -323,6 +323,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    window.toggleFullMap = function() {
+        const btn = document.getElementById('fullScreenToggle');
+        const isFull = document.body.classList.toggle('full-map-mode');
+        if (btn) btn.classList.toggle('active', isFull);
+        
+        // Trigger map resize to fix layout issues
+        setTimeout(() => {
+            if (map) map.invalidateSize();
+        }, 300);
+    };
+
     // ==========================================
     // 9. Fetch Real Buses
     // ==========================================
